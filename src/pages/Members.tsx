@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, Filter, MoreHorizontal } from "lucide-react";
+import { Search, Plus, Filter, MoreHorizontal, UserPlus, Edit, CreditCard } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,23 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface Member {
@@ -51,13 +68,23 @@ const statusStyles = {
 export default function Members() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  const filteredMembers = mockMembers.filter(
-    (member) =>
+  const filteredMembers = mockMembers.filter((member) => {
+    const matchesSearch =
       member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       member.memberNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.phone.includes(searchQuery)
-  );
+      member.phone.includes(searchQuery);
+    const matchesStatus = statusFilter === "all" || member.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const handleAddMember = () => {
+    toast.success("Member registration form - Connect to database to save");
+    setIsAddDialogOpen(false);
+  };
 
   const columns = [
     {
@@ -131,10 +158,17 @@ export default function Members() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => navigate(`/members/${member.id}`)}>
-              View Details
+              <UserPlus className="w-4 h-4 mr-2" />
+              View Details - View member profile, accounts, and transaction history
             </DropdownMenuItem>
-            <DropdownMenuItem>Edit Member</DropdownMenuItem>
-            <DropdownMenuItem>Add Transaction</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.info("Edit member details - Update personal information and contact details")}>
+              <Edit className="w-4 h-4 mr-2" />
+              Edit Member - Modify member information
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate("/transactions")}>
+              <CreditCard className="w-4 h-4 mr-2" />
+              Add Transaction - Record deposit, withdrawal, or payment
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -148,10 +182,48 @@ export default function Members() {
         title="Members"
         description="Manage SACCO member accounts and information"
       >
-        <Button className="gap-2">
-          <Plus className="w-4 h-4" />
-          Add Member
-        </Button>
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" />
+              Add Member
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Register New Member</DialogTitle>
+              <DialogDescription>
+                Add a new member to the SACCO. Fill in the required details below.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="firstName">First Name</Label>
+                <Input id="firstName" placeholder="Enter first name" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input id="lastName" placeholder="Enter last name" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input id="phone" placeholder="+256 700 000000" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email Address</Label>
+                <Input id="email" type="email" placeholder="member@email.com" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="initialShares">Initial Share Contribution (UGX)</Label>
+                <Input id="initialShares" type="number" placeholder="500000" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleAddMember}>Register Member</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </PageHeader>
 
       {/* Filters */}
@@ -165,34 +237,68 @@ export default function Members() {
             className="pl-9"
           />
         </div>
-        <Button variant="outline" className="gap-2">
-          <Filter className="w-4 h-4" />
-          Filters
-        </Button>
+        <Dialog open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <Filter className="w-4 h-4" />
+              Filters
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Filter Members</DialogTitle>
+              <DialogDescription>
+                Apply filters to narrow down the member list.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Status</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="active">Active - Members in good standing</SelectItem>
+                    <SelectItem value="inactive">Inactive - Dormant accounts</SelectItem>
+                    <SelectItem value="suspended">Suspended - Temporarily restricted</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setStatusFilter("all"); setIsFilterOpen(false); }}>
+                Clear Filters
+              </Button>
+              <Button onClick={() => setIsFilterOpen(false)}>Apply Filters</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="p-4 bg-card rounded-lg border border-border">
           <p className="text-sm text-muted-foreground">Total Members</p>
-          <p className="text-2xl font-semibold text-foreground mt-1">{mockMembers.length}</p>
+          <p className="text-2xl font-semibold text-foreground mt-1">{filteredMembers.length}</p>
         </div>
         <div className="p-4 bg-card rounded-lg border border-border">
           <p className="text-sm text-muted-foreground">Active</p>
           <p className="text-2xl font-semibold text-success mt-1">
-            {mockMembers.filter(m => m.status === "active").length}
+            {filteredMembers.filter(m => m.status === "active").length}
           </p>
         </div>
         <div className="p-4 bg-card rounded-lg border border-border">
           <p className="text-sm text-muted-foreground">Total Shares</p>
           <p className="text-2xl font-semibold text-foreground mt-1">
-            {formatCurrency(mockMembers.reduce((sum, m) => sum + m.sharesBalance, 0))}
+            {formatCurrency(filteredMembers.reduce((sum, m) => sum + m.sharesBalance, 0))}
           </p>
         </div>
         <div className="p-4 bg-card rounded-lg border border-border">
           <p className="text-sm text-muted-foreground">Total Savings</p>
           <p className="text-2xl font-semibold text-foreground mt-1">
-            {formatCurrency(mockMembers.reduce((sum, m) => sum + m.savingsBalance, 0))}
+            {formatCurrency(filteredMembers.reduce((sum, m) => sum + m.savingsBalance, 0))}
           </p>
         </div>
       </div>
