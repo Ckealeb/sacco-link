@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Plus, Filter, Download, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { Search, Plus, Filter, Download, ArrowDownLeft, ArrowUpRight, FileSpreadsheet, FileText } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface Transaction {
@@ -54,6 +70,9 @@ const accountTypeStyles: Record<string, string> = {
 export default function Transactions() {
   const [searchQuery, setSearchQuery] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
+  const [directionFilter, setDirectionFilter] = useState("all");
+  const [isNewTxnOpen, setIsNewTxnOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const filteredTransactions = mockTransactions.filter((txn) => {
     const matchesSearch =
@@ -61,8 +80,18 @@ export default function Transactions() {
       txn.memberNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
       txn.reference.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesAccount = accountFilter === "all" || txn.accountType === accountFilter;
-    return matchesSearch && matchesAccount;
+    const matchesDirection = directionFilter === "all" || txn.direction === directionFilter;
+    return matchesSearch && matchesAccount && matchesDirection;
   });
+
+  const handleExport = (format: "excel" | "pdf") => {
+    toast.success(`Exporting transactions to ${format.toUpperCase()} - Connect to backend for actual export`);
+  };
+
+  const handleNewTransaction = () => {
+    toast.success("Transaction recorded - Connect to database to save");
+    setIsNewTxnOpen(false);
+  };
 
   const columns = [
     {
@@ -149,14 +178,95 @@ export default function Transactions() {
         title="Transactions"
         description="Record and manage all SACCO transactions"
       >
-        <Button variant="outline" className="gap-2">
-          <Download className="w-4 h-4" />
-          Export
-        </Button>
-        <Button className="gap-2">
-          <Plus className="w-4 h-4" />
-          New Transaction
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <Download className="w-4 h-4" />
+              Export
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleExport("excel")}>
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Export to Excel - Download transactions as .xlsx spreadsheet
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleExport("pdf")}>
+              <FileText className="w-4 h-4 mr-2" />
+              Export to PDF - Download formatted PDF report
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        
+        <Dialog open={isNewTxnOpen} onOpenChange={setIsNewTxnOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" />
+              New Transaction
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Record New Transaction</DialogTitle>
+              <DialogDescription>
+                Enter transaction details. All transactions are automatically mapped to the general ledger.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="member">Member</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="M001">M001 - Sarah Nakamya</SelectItem>
+                    <SelectItem value="M002">M002 - John Okello</SelectItem>
+                    <SelectItem value="M003">M003 - Grace Auma</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="accountType">Account Type</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Savings">Savings - Regular savings deposits</SelectItem>
+                    <SelectItem value="Shares">Shares - Share capital contributions</SelectItem>
+                    <SelectItem value="Loan">Loan - Loan disbursements & repayments</SelectItem>
+                    <SelectItem value="MM">MM Cycle - Merry-go-round contributions</SelectItem>
+                    <SelectItem value="Development">Development - Development fund</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="direction">Transaction Type</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="credit">Credit - Money coming in (deposits, repayments)</SelectItem>
+                    <SelectItem value="debit">Debit - Money going out (withdrawals, disbursements)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="amount">Amount (UGX)</Label>
+                <Input id="amount" type="number" placeholder="Enter amount" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="narration">Narration</Label>
+                <Input id="narration" placeholder="Brief description of transaction" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsNewTxnOpen(false)}>Cancel</Button>
+              <Button onClick={handleNewTransaction}>Record Transaction</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </PageHeader>
 
       {/* Filters */}
@@ -183,10 +293,57 @@ export default function Transactions() {
             <SelectItem value="Development">Development</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline" className="gap-2">
-          <Filter className="w-4 h-4" />
-          More Filters
-        </Button>
+        <Dialog open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <Filter className="w-4 h-4" />
+              More Filters
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Advanced Filters</DialogTitle>
+              <DialogDescription>
+                Apply additional filters to narrow down transactions.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Transaction Direction</Label>
+                <Select value={directionFilter} onValueChange={setDirectionFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="credit">Credits Only - Money received</SelectItem>
+                    <SelectItem value="debit">Debits Only - Money paid out</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Date Range</Label>
+                <div className="flex gap-2">
+                  <Input type="date" placeholder="From" />
+                  <Input type="date" placeholder="To" />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Amount Range (UGX)</Label>
+                <div className="flex gap-2">
+                  <Input type="number" placeholder="Min" />
+                  <Input type="number" placeholder="Max" />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setDirectionFilter("all"); setIsFilterOpen(false); }}>
+                Clear All
+              </Button>
+              <Button onClick={() => setIsFilterOpen(false)}>Apply Filters</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Summary */}

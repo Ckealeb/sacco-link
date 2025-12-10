@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { RecentTransactions } from "@/components/dashboard/RecentTransactions";
 import { LoanSummary } from "@/components/dashboard/LoanSummary";
+import { TrendCharts } from "@/components/dashboard/TrendCharts";
 
 export default function Dashboard() {
   return (
@@ -52,6 +53,9 @@ export default function Dashboard() {
           iconColor="info"
         />
       </div>
+
+      {/* Trend Charts */}
+      <TrendCharts />
 
       {/* Charts & Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
