@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          account_no: string
+          account_type: Database["public"]["Enums"]["account_type"]
+          balance: number
+          closed_date: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          member_id: string
+          opened_date: string
+          updated_at: string
+        }
+        Insert: {
+          account_no: string
+          account_type: Database["public"]["Enums"]["account_type"]
+          balance?: number
+          closed_date?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          member_id: string
+          opened_date?: string
+          updated_at?: string
+        }
+        Update: {
+          account_no?: string
+          account_type?: Database["public"]["Enums"]["account_type"]
+          balance?: number
+          closed_date?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          member_id?: string
+          opened_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       members: {
         Row: {
           created_at: string
@@ -65,6 +112,63 @@ export type Database = {
         }
         Relationships: []
       }
+      transactions: {
+        Row: {
+          account_id: string
+          amount: number
+          balance_after: number
+          created_at: string
+          created_by: string | null
+          direction: Database["public"]["Enums"]["transaction_direction"]
+          id: string
+          member_id: string
+          narration: string | null
+          reference_no: string | null
+          txn_date: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          balance_after: number
+          created_at?: string
+          created_by?: string | null
+          direction: Database["public"]["Enums"]["transaction_direction"]
+          id?: string
+          member_id: string
+          narration?: string | null
+          reference_no?: string | null
+          txn_date?: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          balance_after?: number
+          created_at?: string
+          created_by?: string | null
+          direction?: Database["public"]["Enums"]["transaction_direction"]
+          id?: string
+          member_id?: string
+          narration?: string | null
+          reference_no?: string | null
+          txn_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -73,7 +177,15 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
+      account_type:
+        | "shares"
+        | "savings"
+        | "fixed_deposit"
+        | "loan"
+        | "mm"
+        | "development_fund"
       member_status: "active" | "inactive" | "suspended"
+      transaction_direction: "debit" | "credit"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -201,7 +313,16 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      account_type: [
+        "shares",
+        "savings",
+        "fixed_deposit",
+        "loan",
+        "mm",
+        "development_fund",
+      ],
       member_status: ["active", "inactive", "suspended"],
+      transaction_direction: ["debit", "credit"],
     },
   },
 } as const
