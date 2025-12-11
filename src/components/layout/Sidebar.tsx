@@ -12,7 +12,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useSidebarContext } from "./AppLayout";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -31,7 +31,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ userRole = "Admin", userName = "John Doe" }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const { collapsed, setCollapsed } = useSidebarContext();
   const location = useLocation();
 
   return (
