@@ -71,10 +71,12 @@ export default function Members() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
   
   // Form state
   const [firstName, setFirstName] = useState("");
@@ -174,6 +176,59 @@ export default function Members() {
     }
   };
 
+  const handleEditMember = async () => {
+    if (!editingMember) return;
+
+    const validation = memberSchema.safeParse({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone.trim(),
+      email: email.trim() || undefined,
+      initialShares: 0, // Not editing shares here
+    });
+
+    if (!validation.success) {
+      toast.error(validation.error.errors[0].message);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("members")
+        .update({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          phone: phone.trim(),
+          email: email.trim() || null,
+        })
+        .eq("id", editingMember.id);
+
+      if (error) throw error;
+
+      toast.success("Member updated successfully!");
+      setIsEditDialogOpen(false);
+      setEditingMember(null);
+      resetForm();
+      fetchMembers();
+    } catch (error: any) {
+      console.error("Error updating member:", error);
+      toast.error(error.message || "Failed to update member");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (member: Member) => {
+    setEditingMember(member);
+    const [first, ...rest] = member.name.split(" ");
+    setFirstName(first);
+    setLastName(rest.join(" "));
+    setPhone(member.phone);
+    setEmail(member.email);
+    setIsEditDialogOpen(true);
+  };
+
   const columns = [
     {
       header: "Member No",
@@ -249,11 +304,11 @@ export default function Members() {
               <UserPlus className="w-4 h-4 mr-2" />
               View Details
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toast.info("Edit member - Coming soon")}>
+            <DropdownMenuItem onClick={() => openEditDialog(member)}>
               <Edit className="w-4 h-4 mr-2" />
               Edit Member
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate("/transactions")}>
+            <DropdownMenuItem onClick={() => navigate(`/members/${member.id}`)}>
               <CreditCard className="w-4 h-4 mr-2" />
               Add Transaction
             </DropdownMenuItem>
@@ -361,6 +416,76 @@ export default function Members() {
           </DialogContent>
         </Dialog>
       </PageHeader>
+
+      {/* Edit Member Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        setIsEditDialogOpen(open);
+        if (!open) {
+          setEditingMember(null);
+          resetForm();
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Member</DialogTitle>
+            <DialogDescription>
+              Update member details below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="editFirstName">First Name *</Label>
+              <Input 
+                id="editFirstName" 
+                placeholder="Enter first name" 
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="editLastName">Last Name *</Label>
+              <Input 
+                id="editLastName" 
+                placeholder="Enter last name" 
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="editPhone">Phone Number *</Label>
+              <Input 
+                id="editPhone" 
+                placeholder="+256 700 000000" 
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="editEmail">Email Address</Label>
+              <Input 
+                id="editEmail" 
+                type="email" 
+                placeholder="member@email.com" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditMember} disabled={submitting}>
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">

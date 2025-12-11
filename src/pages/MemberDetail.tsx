@@ -1,33 +1,9 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, Mail, Calendar, Plus, FileText, Wallet, PiggyBank, CircleDollarSign, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { ArrowLeft, Phone, Mail, Calendar, Plus, FileText, Wallet, PiggyBank, CircleDollarSign, ArrowDownLeft, ArrowUpRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-
-// Mock member data
-const memberData = {
-  id: "1",
-  memberNo: "M001",
-  name: "Sarah Nakamya",
-  phone: "+256 700 123456",
-  email: "sarah@email.com",
-  joinedDate: "2022-03-15",
-  status: "active",
-  accounts: {
-    shares: { balance: 2500000, accountNo: "SHA-001" },
-    savings: { balance: 1500000, accountNo: "SAV-001" },
-    loan: { balance: 0, accountNo: "LON-001" },
-    mm: { balance: 300000, accountNo: "MM-001" },
-    development: { balance: 150000, accountNo: "DEV-001" },
-  },
-  transactions: [
-    { id: "1", date: "2024-01-15", type: "credit", amount: 500000, account: "Savings", narration: "Monthly savings deposit" },
-    { id: "2", date: "2024-01-10", type: "credit", amount: 100000, account: "Shares", narration: "Share contribution" },
-    { id: "3", date: "2024-01-05", type: "credit", amount: 100000, account: "MM", narration: "MM cycle contribution" },
-    { id: "4", date: "2023-12-28", type: "debit", amount: 200000, account: "Savings", narration: "Cash withdrawal" },
-    { id: "5", date: "2023-12-20", type: "credit", amount: 300000, account: "Savings", narration: "Monthly savings deposit" },
-  ],
-};
+import { useMemberDetail, Account } from "@/hooks/useMemberData";
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-UG", {
@@ -62,17 +38,47 @@ function AccountCard({ title, balance, accountNo, icon: Icon, iconColor }: Accou
   );
 }
 
+const accountTypeConfig: Record<string, { title: string; icon: React.ElementType; iconColor: string }> = {
+  shares: { title: "Shares", icon: PiggyBank, iconColor: "bg-accent/10 text-accent" },
+  savings: { title: "Savings", icon: PiggyBank, iconColor: "bg-success/10 text-success" },
+  fixed_deposit: { title: "Fixed Deposit", icon: Wallet, iconColor: "bg-info/10 text-info" },
+  loan: { title: "Loan", icon: Wallet, iconColor: "bg-warning/10 text-warning" },
+  mm: { title: "MM Cycle", icon: CircleDollarSign, iconColor: "bg-info/10 text-info" },
+  development_fund: { title: "Development", icon: PiggyBank, iconColor: "bg-primary/10 text-primary" },
+};
+
 export default function MemberDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { member, accounts, transactions, loading, error } = useMemberDetail(id);
 
-  // In real app, fetch member by id
-  const member = memberData;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error || !member) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">Member not found</p>
+        <Button variant="outline" onClick={() => navigate("/members")} className="mt-4">
+          Back to Members
+        </Button>
+      </div>
+    );
+  }
+
+  const getAccountByType = (type: string): Account | undefined => {
+    return accounts.find(a => a.account_type === type);
+  };
 
   return (
     <div className="animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8">
         <Button
           variant="ghost"
           size="icon"
@@ -83,17 +89,24 @@ export default function MemberDetail() {
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-foreground">{member.name}</h1>
-            <span className="badge-success">{member.status}</span>
+            <h1 className="text-2xl font-semibold text-foreground">
+              {member.first_name} {member.last_name}
+            </h1>
+            <span className={cn(
+              "text-xs px-2 py-1 rounded-full font-medium",
+              member.status === "active" ? "badge-success" : "bg-muted text-muted-foreground"
+            )}>
+              {member.status}
+            </span>
           </div>
-          <p className="text-sm text-muted-foreground font-mono">{member.memberNo}</p>
+          <p className="text-sm text-muted-foreground font-mono">{member.member_no}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" className="gap-2">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <Button variant="outline" className="gap-2 flex-1 sm:flex-none">
             <FileText className="w-4 h-4" />
             Statement
           </Button>
-          <Button className="gap-2">
+          <Button className="gap-2 flex-1 sm:flex-none">
             <Plus className="w-4 h-4" />
             Transaction
           </Button>
@@ -101,59 +114,39 @@ export default function MemberDetail() {
       </div>
 
       {/* Contact Info */}
-      <div className="flex flex-wrap gap-6 mb-8 p-4 bg-card rounded-lg border border-border">
+      <div className="flex flex-wrap gap-4 sm:gap-6 mb-8 p-4 bg-card rounded-lg border border-border">
         <div className="flex items-center gap-2 text-sm">
           <Phone className="w-4 h-4 text-muted-foreground" />
           <span className="text-foreground">{member.phone}</span>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Mail className="w-4 h-4 text-muted-foreground" />
-          <span className="text-foreground">{member.email}</span>
-        </div>
+        {member.email && (
+          <div className="flex items-center gap-2 text-sm">
+            <Mail className="w-4 h-4 text-muted-foreground" />
+            <span className="text-foreground">{member.email}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2 text-sm">
           <Calendar className="w-4 h-4 text-muted-foreground" />
           <span className="text-muted-foreground">Joined:</span>
-          <span className="text-foreground">{member.joinedDate}</span>
+          <span className="text-foreground">{member.joined_date}</span>
         </div>
       </div>
 
       {/* Account Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        <AccountCard
-          title="Shares"
-          balance={member.accounts.shares.balance}
-          accountNo={member.accounts.shares.accountNo}
-          icon={PiggyBank}
-          iconColor="bg-accent/10 text-accent"
-        />
-        <AccountCard
-          title="Savings"
-          balance={member.accounts.savings.balance}
-          accountNo={member.accounts.savings.accountNo}
-          icon={PiggyBank}
-          iconColor="bg-success/10 text-success"
-        />
-        <AccountCard
-          title="Loan"
-          balance={member.accounts.loan.balance}
-          accountNo={member.accounts.loan.accountNo}
-          icon={Wallet}
-          iconColor="bg-warning/10 text-warning"
-        />
-        <AccountCard
-          title="MM Cycle"
-          balance={member.accounts.mm.balance}
-          accountNo={member.accounts.mm.accountNo}
-          icon={CircleDollarSign}
-          iconColor="bg-info/10 text-info"
-        />
-        <AccountCard
-          title="Development"
-          balance={member.accounts.development.balance}
-          accountNo={member.accounts.development.accountNo}
-          icon={PiggyBank}
-          iconColor="bg-primary/10 text-primary"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+        {Object.entries(accountTypeConfig).map(([type, config]) => {
+          const account = getAccountByType(type);
+          return (
+            <AccountCard
+              key={type}
+              title={config.title}
+              balance={account?.balance ?? 0}
+              accountNo={account?.account_no ?? "Not opened"}
+              icon={config.icon}
+              iconColor={config.iconColor}
+            />
+          );
+        })}
       </div>
 
       {/* Tabs */}
@@ -169,39 +162,47 @@ export default function MemberDetail() {
             <div className="p-4 border-b border-border">
               <h3 className="font-semibold text-foreground">Transaction History</h3>
             </div>
-            <div className="divide-y divide-border">
-              {member.transactions.map((txn) => (
-                <div key={txn.id} className="flex items-center gap-4 p-4 hover:bg-secondary/30 transition-colors">
-                  <div
-                    className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center",
-                      txn.type === "credit" ? "bg-success/10" : "bg-warning/10"
-                    )}
-                  >
-                    {txn.type === "credit" ? (
-                      <ArrowDownLeft className="w-5 h-5 text-success" />
-                    ) : (
-                      <ArrowUpRight className="w-5 h-5 text-warning" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{txn.narration}</p>
-                    <p className="text-xs text-muted-foreground">{txn.account}</p>
-                  </div>
-                  <div className="text-right">
-                    <p
+            {transactions.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-muted-foreground">No transactions yet</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {transactions.map((txn) => (
+                  <div key={txn.id} className="flex items-center gap-4 p-4 hover:bg-secondary/30 transition-colors">
+                    <div
                       className={cn(
-                        "text-sm font-semibold",
-                        txn.type === "credit" ? "text-success" : "text-foreground"
+                        "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
+                        txn.direction === "credit" ? "bg-success/10" : "bg-warning/10"
                       )}
                     >
-                      {txn.type === "credit" ? "+" : "-"}{formatCurrency(txn.amount)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{txn.date}</p>
+                      {txn.direction === "credit" ? (
+                        <ArrowDownLeft className="w-5 h-5 text-success" />
+                      ) : (
+                        <ArrowUpRight className="w-5 h-5 text-warning" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{txn.narration || "Transaction"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {txn.account ? accountTypeConfig[txn.account.account_type]?.title : "Account"}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p
+                        className={cn(
+                          "text-sm font-semibold",
+                          txn.direction === "credit" ? "text-success" : "text-foreground"
+                        )}
+                      >
+                        {txn.direction === "credit" ? "+" : "-"}{formatCurrency(txn.amount)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{txn.txn_date}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </TabsContent>
 
