@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, Filter, MoreHorizontal, UserPlus, Edit, CreditCard } from "lucide-react";
+import { Search, Plus, Filter, MoreHorizontal, UserPlus, Edit, CreditCard, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { z } from "zod";
 
 interface Member {
   id: string;
@@ -43,14 +45,13 @@ interface Member {
   joinedDate: string;
 }
 
-const mockMembers: Member[] = [
-  { id: "1", memberNo: "M001", name: "Sarah Nakamya", phone: "+256 700 123456", email: "sarah@email.com", sharesBalance: 2500000, savingsBalance: 1500000, loanBalance: 0, status: "active", joinedDate: "2022-03-15" },
-  { id: "2", memberNo: "M002", name: "John Okello", phone: "+256 701 234567", email: "john@email.com", sharesBalance: 5000000, savingsBalance: 3200000, loanBalance: 8000000, status: "active", joinedDate: "2021-08-20" },
-  { id: "3", memberNo: "M003", name: "Grace Auma", phone: "+256 702 345678", email: "grace@email.com", sharesBalance: 1000000, savingsBalance: 800000, loanBalance: 2000000, status: "active", joinedDate: "2023-01-10" },
-  { id: "4", memberNo: "M004", name: "Peter Mugisha", phone: "+256 703 456789", email: "peter@email.com", sharesBalance: 3500000, savingsBalance: 2100000, loanBalance: 0, status: "inactive", joinedDate: "2020-11-05" },
-  { id: "5", memberNo: "M005", name: "Mary Nalwanga", phone: "+256 704 567890", email: "mary@email.com", sharesBalance: 1800000, savingsBalance: 950000, loanBalance: 5000000, status: "active", joinedDate: "2022-06-28" },
-  { id: "6", memberNo: "M006", name: "David Ssemakula", phone: "+256 705 678901", email: "david@email.com", sharesBalance: 4200000, savingsBalance: 2800000, loanBalance: 3000000, status: "active", joinedDate: "2021-04-12" },
-];
+const memberSchema = z.object({
+  firstName: z.string().min(1, "First name is required").max(100),
+  lastName: z.string().min(1, "Last name is required").max(100),
+  phone: z.string().min(10, "Valid phone number is required").max(20),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
+  initialShares: z.number().min(0, "Initial shares must be positive"),
+});
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-UG", {
@@ -71,8 +72,53 @@ export default function Members() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  
+  // Form state
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [initialShares, setInitialShares] = useState("");
 
-  const filteredMembers = mockMembers.filter((member) => {
+  const fetchMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("members")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const formattedMembers: Member[] = (data || []).map((m) => ({
+        id: m.id,
+        memberNo: m.member_no,
+        name: `${m.first_name} ${m.last_name}`,
+        phone: m.phone,
+        email: m.email || "",
+        sharesBalance: Number(m.shares_balance),
+        savingsBalance: Number(m.savings_balance),
+        loanBalance: Number(m.loan_balance),
+        status: m.status as "active" | "inactive" | "suspended",
+        joinedDate: m.joined_date,
+      }));
+
+      setMembers(formattedMembers);
+    } catch (error: any) {
+      console.error("Error fetching members:", error);
+      toast.error("Failed to load members");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMembers();
+  }, []);
+
+  const filteredMembers = members.filter((member) => {
     const matchesSearch =
       member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       member.memberNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -81,9 +127,50 @@ export default function Members() {
     return matchesSearch && matchesStatus;
   });
 
-  const handleAddMember = () => {
-    toast.success("Member registration form - Connect to database to save");
-    setIsAddDialogOpen(false);
+  const resetForm = () => {
+    setFirstName("");
+    setLastName("");
+    setPhone("");
+    setEmail("");
+    setInitialShares("");
+  };
+
+  const handleAddMember = async () => {
+    const validation = memberSchema.safeParse({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone.trim(),
+      email: email.trim() || undefined,
+      initialShares: Number(initialShares) || 0,
+    });
+
+    if (!validation.success) {
+      toast.error(validation.error.errors[0].message);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.from("members").insert({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        phone: phone.trim(),
+        email: email.trim() || null,
+        shares_balance: Number(initialShares) || 0,
+      });
+
+      if (error) throw error;
+
+      toast.success("Member registered successfully!");
+      setIsAddDialogOpen(false);
+      resetForm();
+      fetchMembers();
+    } catch (error: any) {
+      console.error("Error adding member:", error);
+      toast.error(error.message || "Failed to register member");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const columns = [
@@ -159,15 +246,15 @@ export default function Members() {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => navigate(`/members/${member.id}`)}>
               <UserPlus className="w-4 h-4 mr-2" />
-              View Details - View member profile, accounts, and transaction history
+              View Details
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toast.info("Edit member details - Update personal information and contact details")}>
+            <DropdownMenuItem onClick={() => toast.info("Edit member - Coming soon")}>
               <Edit className="w-4 h-4 mr-2" />
-              Edit Member - Modify member information
+              Edit Member
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate("/transactions")}>
               <CreditCard className="w-4 h-4 mr-2" />
-              Add Transaction - Record deposit, withdrawal, or payment
+              Add Transaction
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -176,13 +263,24 @@ export default function Members() {
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade-in">
       <PageHeader
         title="Members"
         description="Manage SACCO member accounts and information"
       >
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+          setIsAddDialogOpen(open);
+          if (!open) resetForm();
+        }}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <Plus className="w-4 h-4" />
@@ -198,29 +296,66 @@ export default function Members() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <Input id="firstName" placeholder="Enter first name" />
+                <Label htmlFor="firstName">First Name *</Label>
+                <Input 
+                  id="firstName" 
+                  placeholder="Enter first name" 
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  disabled={submitting}
+                />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="lastName">Last Name</Label>
-                <Input id="lastName" placeholder="Enter last name" />
+                <Label htmlFor="lastName">Last Name *</Label>
+                <Input 
+                  id="lastName" 
+                  placeholder="Enter last name" 
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  disabled={submitting}
+                />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input id="phone" placeholder="+256 700 000000" />
+                <Label htmlFor="phone">Phone Number *</Label>
+                <Input 
+                  id="phone" 
+                  placeholder="+256 700 000000" 
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={submitting}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" placeholder="member@email.com" />
+                <Input 
+                  id="email" 
+                  type="email" 
+                  placeholder="member@email.com" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={submitting}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="initialShares">Initial Share Contribution (UGX)</Label>
-                <Input id="initialShares" type="number" placeholder="500000" />
+                <Input 
+                  id="initialShares" 
+                  type="number" 
+                  placeholder="500000" 
+                  value={initialShares}
+                  onChange={(e) => setInitialShares(e.target.value)}
+                  disabled={submitting}
+                />
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleAddMember}>Register Member</Button>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddMember} disabled={submitting}>
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Register Member
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -260,9 +395,9 @@ export default function Members() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="active">Active - Members in good standing</SelectItem>
-                    <SelectItem value="inactive">Inactive - Dormant accounts</SelectItem>
-                    <SelectItem value="suspended">Suspended - Temporarily restricted</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
