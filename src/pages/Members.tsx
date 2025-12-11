@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, Filter, MoreHorizontal, UserPlus, Edit, CreditCard, Loader2 } from "lucide-react";
+import { Search, Plus, Filter, MoreHorizontal, UserPlus, Edit, CreditCard, Loader2, Eye } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +77,12 @@ export default function Members() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [isTransactionDialogOpen, setIsTransactionDialogOpen] = useState(false);
+  const [transactionMember, setTransactionMember] = useState<Member | null>(null);
+  const [transactionType, setTransactionType] = useState<string>("shares");
+  const [transactionDirection, setTransactionDirection] = useState<string>("credit");
+  const [transactionAmount, setTransactionAmount] = useState("");
+  const [transactionNarration, setTransactionNarration] = useState("");
   
   // Form state
   const [firstName, setFirstName] = useState("");
@@ -229,6 +235,117 @@ export default function Members() {
     setIsEditDialogOpen(true);
   };
 
+  const openTransactionDialog = (member: Member) => {
+    setTransactionMember(member);
+    setTransactionType("shares");
+    setTransactionDirection("credit");
+    setTransactionAmount("");
+    setTransactionNarration("");
+    setIsTransactionDialogOpen(true);
+  };
+
+  const handleAddTransaction = async () => {
+    if (!transactionMember || !transactionAmount) {
+      toast.error("Please enter an amount");
+      return;
+    }
+
+    const amount = Number(transactionAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // First, get or create the account for this transaction type
+      let { data: account, error: accountError } = await supabase
+        .from("accounts")
+        .select("*")
+        .eq("member_id", transactionMember.id)
+        .eq("account_type", transactionType as "shares" | "savings" | "loan" | "mm" | "fixed_deposit" | "development_fund")
+        .eq("is_active", true)
+        .single();
+
+      if (accountError && accountError.code === "PGRST116") {
+        // Account doesn't exist, create it
+        const { data: newAccount, error: createError } = await supabase
+          .from("accounts")
+          .insert([{
+            member_id: transactionMember.id,
+            account_type: transactionType as "shares" | "savings" | "loan" | "mm" | "fixed_deposit" | "development_fund",
+            account_no: "",
+            balance: 0,
+          }])
+          .select()
+          .single();
+
+        if (createError) throw createError;
+        account = newAccount;
+      } else if (accountError) {
+        throw accountError;
+      }
+
+      if (!account) throw new Error("Failed to get account");
+
+      const currentBalance = Number(account.balance);
+      const newBalance = transactionDirection === "credit" 
+        ? currentBalance + amount 
+        : currentBalance - amount;
+
+      if (newBalance < 0) {
+        toast.error("Insufficient balance for this withdrawal");
+        setSubmitting(false);
+        return;
+      }
+
+      // Create transaction
+      const { error: txnError } = await supabase.from("transactions").insert([{
+        account_id: account.id,
+        member_id: transactionMember.id,
+        amount,
+        direction: transactionDirection as "credit" | "debit",
+        balance_after: newBalance,
+        narration: transactionNarration || `${transactionDirection === "credit" ? "Deposit" : "Withdrawal"} - ${transactionType}`,
+      }]);
+
+      if (txnError) throw txnError;
+
+      // Update account balance
+      const { error: updateError } = await supabase
+        .from("accounts")
+        .update({ balance: newBalance })
+        .eq("id", account.id);
+
+      if (updateError) throw updateError;
+
+      // Update member balance
+      const balanceField = transactionType === "shares" ? "shares_balance" 
+        : transactionType === "savings" ? "savings_balance" 
+        : transactionType === "loan" ? "loan_balance" 
+        : null;
+
+      if (balanceField) {
+        const { error: memberError } = await supabase
+          .from("members")
+          .update({ [balanceField]: newBalance })
+          .eq("id", transactionMember.id);
+
+        if (memberError) throw memberError;
+      }
+
+      toast.success("Transaction recorded successfully!");
+      setIsTransactionDialogOpen(false);
+      setTransactionMember(null);
+      fetchMembers();
+    } catch (error: any) {
+      console.error("Error adding transaction:", error);
+      toast.error(error.message || "Failed to add transaction");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const columns = [
     {
       header: "Member No",
@@ -301,14 +418,14 @@ export default function Members() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => navigate(`/members/${member.id}`)}>
-              <UserPlus className="w-4 h-4 mr-2" />
+              <Eye className="w-4 h-4 mr-2" />
               View Details
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openEditDialog(member)}>
               <Edit className="w-4 h-4 mr-2" />
               Edit Member
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate(`/members/${member.id}`)}>
+            <DropdownMenuItem onClick={() => openTransactionDialog(member)}>
               <CreditCard className="w-4 h-4 mr-2" />
               Add Transaction
             </DropdownMenuItem>
@@ -482,6 +599,81 @@ export default function Members() {
             <Button onClick={handleEditMember} disabled={submitting}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Transaction Dialog */}
+      <Dialog open={isTransactionDialogOpen} onOpenChange={(open) => {
+        setIsTransactionDialogOpen(open);
+        if (!open) setTransactionMember(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Transaction</DialogTitle>
+            <DialogDescription>
+              {transactionMember ? `Record a transaction for ${transactionMember.name}` : "Record a new transaction"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Account Type</Label>
+              <Select value={transactionType} onValueChange={setTransactionType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="shares">Shares</SelectItem>
+                  <SelectItem value="savings">Savings</SelectItem>
+                  <SelectItem value="loan">Loan</SelectItem>
+                  <SelectItem value="mm">Merry-Go-Round (MM)</SelectItem>
+                  <SelectItem value="fixed_deposit">Fixed Deposit</SelectItem>
+                  <SelectItem value="development_fund">Development Fund</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Transaction Type</Label>
+              <Select value={transactionDirection} onValueChange={setTransactionDirection}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select transaction type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="credit">Deposit / Credit</SelectItem>
+                  <SelectItem value="debit">Withdrawal / Debit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="txnAmount">Amount (UGX) *</Label>
+              <Input 
+                id="txnAmount" 
+                type="number" 
+                placeholder="Enter amount"
+                value={transactionAmount}
+                onChange={(e) => setTransactionAmount(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="txnNarration">Narration</Label>
+              <Input 
+                id="txnNarration" 
+                placeholder="Transaction description (optional)"
+                value={transactionNarration}
+                onChange={(e) => setTransactionNarration(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsTransactionDialogOpen(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddTransaction} disabled={submitting}>
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Record Transaction
             </Button>
           </div>
         </DialogContent>
