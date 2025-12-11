@@ -1,11 +1,35 @@
 import { useState } from "react";
-import { Search, Plus, Filter, AlertCircle, CheckCircle, Clock, XCircle } from "lucide-react";
+import { Search, Plus, AlertCircle, CheckCircle, Clock, XCircle, Eye, CreditCard, FileText } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { DataTable } from "@/components/ui/data-table";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "@/hooks/use-toast";
 
 interface Loan {
   id: string;
@@ -46,6 +70,10 @@ const statusConfig = {
 export default function Loans() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [newLoanOpen, setNewLoanOpen] = useState(false);
+  const [arrearsDialogOpen, setArrearsDialogOpen] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
 
   const filteredLoans = mockLoans.filter((loan) => {
     const matchesSearch =
@@ -54,6 +82,25 @@ export default function Loans() {
     const matchesStatus = statusFilter === "all" || loan.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const arrearsLoans = mockLoans.filter((l) => l.status === "arrears");
+
+  const handleNewLoan = () => {
+    toast({
+      title: "Loan Application Created",
+      description: "New loan application has been submitted for approval.",
+    });
+    setNewLoanOpen(false);
+  };
+
+  const handleRecordPayment = () => {
+    toast({
+      title: "Payment Recorded",
+      description: `Payment has been recorded for ${selectedLoan?.loanNo}.`,
+    });
+    setPaymentDialogOpen(false);
+    setSelectedLoan(null);
+  };
 
   const columns = [
     {
@@ -135,6 +182,40 @@ export default function Loans() {
         </span>
       ),
     },
+    {
+      header: "Actions",
+      accessorKey: "id" as const,
+      cell: (loan: Loan) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm">Actions</Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="bg-popover">
+            <DropdownMenuItem onClick={() => {
+              toast({ title: "View Loan", description: `Viewing details for ${loan.loanNo}` });
+            }}>
+              <Eye className="w-4 h-4 mr-2" />
+              View Details
+            </DropdownMenuItem>
+            {loan.status !== "closed" && (
+              <DropdownMenuItem onClick={() => {
+                setSelectedLoan(loan);
+                setPaymentDialogOpen(true);
+              }}>
+                <CreditCard className="w-4 h-4 mr-2" />
+                Record Payment
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => {
+              toast({ title: "Schedule Generated", description: `Loan schedule for ${loan.loanNo} has been generated.` });
+            }}>
+              <FileText className="w-4 h-4 mr-2" />
+              View Schedule
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
   ];
 
   const totalOutstanding = mockLoans.reduce((sum, l) => sum + l.outstandingBalance, 0);
@@ -147,24 +228,135 @@ export default function Loans() {
         title="Loan Management"
         description="Track and manage member loans"
       >
-        <Button className="gap-2">
-          <Plus className="w-4 h-4" />
-          New Loan
-        </Button>
+        <Dialog open={newLoanOpen} onOpenChange={setNewLoanOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" />
+              New Loan
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>New Loan Application</DialogTitle>
+              <DialogDescription>Create a new loan application for a member. The loan will be submitted for approval.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="member">Select Member</Label>
+                <Select>
+                  <SelectTrigger id="member">
+                    <SelectValue placeholder="Choose a member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="M002">John Okello (M002)</SelectItem>
+                    <SelectItem value="M003">Grace Auma (M003)</SelectItem>
+                    <SelectItem value="M004">Peter Mugisha (M004)</SelectItem>
+                    <SelectItem value="M005">Mary Nalwanga (M005)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="principal">Loan Amount (UGX)</Label>
+                <Input id="principal" type="number" placeholder="Enter loan amount" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rate">Interest Rate (%)</Label>
+                  <Input id="rate" type="number" defaultValue="12" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tenor">Tenor (Months)</Label>
+                  <Input id="tenor" type="number" defaultValue="12" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="purpose">Purpose</Label>
+                <Input id="purpose" placeholder="e.g., Business expansion" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setNewLoanOpen(false)}>Cancel</Button>
+              <Button onClick={handleNewLoan}>Submit Application</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </PageHeader>
 
-      {/* Alerts */}
+      {/* Arrears Alert */}
       {inArrears > 0 && (
         <div className="flex items-center gap-3 p-4 mb-6 bg-warning/10 border border-warning/20 rounded-lg">
           <AlertCircle className="w-5 h-5 text-warning" />
           <p className="text-sm text-foreground">
             <span className="font-semibold">{inArrears} loan(s)</span> are currently in arrears and require attention.
           </p>
-          <Button variant="outline" size="sm" className="ml-auto">
-            View Arrears
-          </Button>
+          <Dialog open={arrearsDialogOpen} onOpenChange={setArrearsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="ml-auto">
+                View Arrears
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Loans in Arrears</DialogTitle>
+                <DialogDescription>These loans have overdue payments and need immediate attention.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-4">
+                {arrearsLoans.map((loan) => (
+                  <div key={loan.id} className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-foreground">{loan.memberName}</p>
+                      <p className="text-sm text-muted-foreground">{loan.loanNo} • Due: {loan.nextPaymentDate}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-warning">{formatCurrency(loan.outstandingBalance)}</p>
+                      <p className="text-xs text-muted-foreground">Outstanding</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setArrearsDialogOpen(false)}>Close</Button>
+                <Button onClick={() => {
+                  toast({ title: "Reminders Sent", description: "Payment reminders have been sent to all members with arrears." });
+                  setArrearsDialogOpen(false);
+                }}>Send Reminders</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
+
+      {/* Payment Dialog */}
+      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Record Loan Payment</DialogTitle>
+            <DialogDescription>Record a payment for {selectedLoan?.loanNo} - {selectedLoan?.memberName}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-secondary/50 rounded-lg">
+              <p className="text-sm text-muted-foreground">Outstanding Balance</p>
+              <p className="text-xl font-semibold text-foreground">{formatCurrency(selectedLoan?.outstandingBalance || 0)}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paymentAmount">Payment Amount (UGX)</Label>
+              <Input id="paymentAmount" type="number" placeholder="Enter payment amount" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paymentDate">Payment Date</Label>
+              <Input id="paymentDate" type="date" defaultValue={new Date().toISOString().split('T')[0]} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paymentRef">Reference</Label>
+              <Input id="paymentRef" placeholder="e.g., Receipt number" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleRecordPayment}>Record Payment</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
