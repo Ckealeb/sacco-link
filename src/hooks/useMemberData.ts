@@ -46,6 +46,9 @@ export function useMemberDetail(memberId: string | undefined) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refetch = () => setRefreshKey(k => k + 1);
 
   useEffect(() => {
     if (!memberId) return;
@@ -91,9 +94,9 @@ export function useMemberDetail(memberId: string | undefined) {
     }
 
     fetchData();
-  }, [memberId]);
+  }, [memberId, refreshKey]);
 
-  return { member, accounts, transactions, loading, error, refetch: () => {} };
+  return { member, accounts, transactions, loading, error, refetch };
 }
 
 export async function createAccount(memberId: string, accountType: Account["account_type"]) {
