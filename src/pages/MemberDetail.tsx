@@ -1,9 +1,16 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, Mail, Calendar, Plus, FileText, Wallet, PiggyBank, CircleDollarSign, ArrowDownLeft, ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowLeft, Phone, Mail, Calendar, Plus, FileText, Wallet, PiggyBank, CircleDollarSign, ArrowDownLeft, ArrowUpRight, Loader2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { useMemberDetail, Account } from "@/hooks/useMemberData";
+import { useMemberDetail, Account, createAccount, createTransaction } from "@/hooks/useMemberData";
+import { toast } from "sonner";
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-UG", {
@@ -50,7 +57,99 @@ const accountTypeConfig: Record<string, { title: string; icon: React.ElementType
 export default function MemberDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { member, accounts, transactions, loading, error } = useMemberDetail(id);
+  const { member, accounts, transactions, loading, error, refetch } = useMemberDetail(id);
+
+  // Statement dialog state
+  const [statementOpen, setStatementOpen] = useState(false);
+  const [statementAccountType, setStatementAccountType] = useState<string>("all");
+  const [statementDateFrom, setStatementDateFrom] = useState("");
+  const [statementDateTo, setStatementDateTo] = useState("");
+
+  // Transaction dialog state
+  const [txnOpen, setTxnOpen] = useState(false);
+  const [txnAccountType, setTxnAccountType] = useState<string>("");
+  const [txnDirection, setTxnDirection] = useState<"credit" | "debit">("credit");
+  const [txnAmount, setTxnAmount] = useState("");
+  const [txnNarration, setTxnNarration] = useState("");
+  const [txnLoading, setTxnLoading] = useState(false);
+
+  const handleAddTransaction = async () => {
+    if (!id || !txnAccountType || !txnAmount) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+
+    setTxnLoading(true);
+    try {
+      let account = accounts.find(a => a.account_type === txnAccountType);
+      
+      if (!account) {
+        account = await createAccount(id, txnAccountType as Account["account_type"]);
+        toast.success(`${accountTypeConfig[txnAccountType]?.title} account created`);
+      }
+
+      await createTransaction(
+        account.id,
+        id,
+        parseFloat(txnAmount),
+        txnDirection,
+        txnNarration || `${txnDirection === "credit" ? "Deposit" : "Withdrawal"} - ${accountTypeConfig[txnAccountType]?.title}`,
+        account.balance
+      );
+
+      toast.success("Transaction recorded successfully");
+      setTxnOpen(false);
+      setTxnAccountType("");
+      setTxnAmount("");
+      setTxnNarration("");
+      refetch();
+    } catch (err) {
+      toast.error("Failed to record transaction");
+    } finally {
+      setTxnLoading(false);
+    }
+  };
+
+  const getFilteredTransactions = () => {
+    let filtered = transactions;
+    
+    if (statementAccountType !== "all") {
+      filtered = filtered.filter(t => t.account?.account_type === statementAccountType);
+    }
+    
+    if (statementDateFrom) {
+      filtered = filtered.filter(t => t.txn_date >= statementDateFrom);
+    }
+    
+    if (statementDateTo) {
+      filtered = filtered.filter(t => t.txn_date <= statementDateTo);
+    }
+    
+    return filtered;
+  };
+
+  const handleExportStatement = () => {
+    const filtered = getFilteredTransactions();
+    const csvContent = [
+      ["Date", "Account", "Type", "Narration", "Amount", "Balance After"].join(","),
+      ...filtered.map(t => [
+        t.txn_date,
+        t.account ? accountTypeConfig[t.account.account_type]?.title : "",
+        t.direction,
+        `"${t.narration || ""}"`,
+        t.direction === "credit" ? t.amount : -t.amount,
+        t.balance_after
+      ].join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `statement_${member?.member_no}_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    toast.success("Statement exported");
+  };
 
   if (loading) {
     return (
@@ -102,16 +201,138 @@ export default function MemberDetail() {
           <p className="text-sm text-muted-foreground font-mono">{member.member_no}</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <Button variant="outline" className="gap-2 flex-1 sm:flex-none">
+          <Button variant="outline" className="gap-2 flex-1 sm:flex-none" onClick={() => setStatementOpen(true)}>
             <FileText className="w-4 h-4" />
             Statement
           </Button>
-          <Button className="gap-2 flex-1 sm:flex-none">
+          <Button className="gap-2 flex-1 sm:flex-none" onClick={() => setTxnOpen(true)}>
             <Plus className="w-4 h-4" />
             Transaction
           </Button>
         </div>
       </div>
+
+      {/* Statement Dialog */}
+      <Dialog open={statementOpen} onOpenChange={setStatementOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Member Statement - {member.first_name} {member.last_name}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-4 py-4 border-b border-border">
+            <div className="space-y-1.5">
+              <Label>Account Type</Label>
+              <Select value={statementAccountType} onValueChange={setStatementAccountType}>
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Accounts</SelectItem>
+                  {Object.entries(accountTypeConfig).map(([type, config]) => (
+                    <SelectItem key={type} value={type}>{config.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>From Date</Label>
+              <Input type="date" value={statementDateFrom} onChange={(e) => setStatementDateFrom(e.target.value)} className="w-40" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>To Date</Label>
+              <Input type="date" value={statementDateTo} onChange={(e) => setStatementDateTo(e.target.value)} className="w-40" />
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted sticky top-0">
+                <tr>
+                  <th className="text-left p-2 font-medium">Date</th>
+                  <th className="text-left p-2 font-medium">Account</th>
+                  <th className="text-left p-2 font-medium">Narration</th>
+                  <th className="text-right p-2 font-medium">Debit</th>
+                  <th className="text-right p-2 font-medium">Credit</th>
+                  <th className="text-right p-2 font-medium">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {getFilteredTransactions().map((txn) => (
+                  <tr key={txn.id} className="hover:bg-secondary/30">
+                    <td className="p-2">{txn.txn_date}</td>
+                    <td className="p-2">{txn.account ? accountTypeConfig[txn.account.account_type]?.title : "-"}</td>
+                    <td className="p-2">{txn.narration || "-"}</td>
+                    <td className="p-2 text-right">{txn.direction === "debit" ? formatCurrency(txn.amount) : "-"}</td>
+                    <td className="p-2 text-right text-success">{txn.direction === "credit" ? formatCurrency(txn.amount) : "-"}</td>
+                    <td className="p-2 text-right font-medium">{formatCurrency(txn.balance_after)}</td>
+                  </tr>
+                ))}
+                {getFilteredTransactions().length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-muted-foreground">No transactions found</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatementOpen(false)}>Close</Button>
+            <Button onClick={handleExportStatement} className="gap-2">
+              <Download className="w-4 h-4" />
+              Export CSV
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Transaction Dialog */}
+      <Dialog open={txnOpen} onOpenChange={setTxnOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Transaction</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label>Account Type *</Label>
+              <Select value={txnAccountType} onValueChange={setTxnAccountType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(accountTypeConfig).map(([type, config]) => (
+                    <SelectItem key={type} value={type}>{config.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Transaction Type *</Label>
+              <Select value={txnDirection} onValueChange={(v) => setTxnDirection(v as "credit" | "debit")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="credit">Deposit (Credit)</SelectItem>
+                  <SelectItem value="debit">Withdrawal (Debit)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Amount (UGX) *</Label>
+              <Input type="number" placeholder="0" value={txnAmount} onChange={(e) => setTxnAmount(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Narration</Label>
+              <Textarea placeholder="Transaction description..." value={txnNarration} onChange={(e) => setTxnNarration(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTxnOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddTransaction} disabled={txnLoading}>
+              {txnLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Save Transaction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Contact Info */}
       <div className="flex flex-wrap gap-4 sm:gap-6 mb-8 p-4 bg-card rounded-lg border border-border">
