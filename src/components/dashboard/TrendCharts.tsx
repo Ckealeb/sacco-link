@@ -4,16 +4,9 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
-
-const weeklyData = [
-  { week: "W1", collections: 3200000, loans: 118000000, cashInBank: 42500000 },
-  { week: "W2", collections: 2800000, loans: 120000000, cashInBank: 43200000 },
-  { week: "W3", collections: 3500000, loans: 122000000, cashInBank: 44100000 },
-  { week: "W4", collections: 4100000, loans: 125000000, cashInBank: 45200000 },
-  { week: "W5", collections: 3800000, loans: 123000000, cashInBank: 46800000 },
-  { week: "W6", collections: 3600000, loans: 125000000, cashInBank: 45200000 },
-];
+import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
+import { useWeeklyTrends } from "@/hooks/useDashboardData";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const chartConfig = {
   collections: { label: "Weekly Collections", color: "hsl(var(--info))" },
@@ -28,6 +21,27 @@ function formatValue(value: number) {
 }
 
 export function TrendCharts() {
+  const { data: weeklyData, isLoading } = useWeeklyTrends();
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {[1, 2, 3].map((i) => (
+          <Card key={i}>
+            <CardHeader className="pb-2">
+              <Skeleton className="h-4 w-40" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-[200px] w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  const data = weeklyData || [];
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
       {/* Weekly Collections */}
@@ -39,7 +53,7 @@ export function TrendCharts() {
         </CardHeader>
         <CardContent>
           <ChartContainer config={chartConfig} className="h-[200px] w-full">
-            <LineChart data={weeklyData}>
+            <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
               <XAxis dataKey="week" tick={{ fontSize: 12 }} className="text-muted-foreground" />
               <YAxis tickFormatter={formatValue} tick={{ fontSize: 10 }} width={45} />
@@ -68,7 +82,7 @@ export function TrendCharts() {
         </CardHeader>
         <CardContent>
           <ChartContainer config={chartConfig} className="h-[200px] w-full">
-            <LineChart data={weeklyData}>
+            <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
               <XAxis dataKey="week" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={formatValue} tick={{ fontSize: 10 }} width={45} />
@@ -97,7 +111,7 @@ export function TrendCharts() {
         </CardHeader>
         <CardContent>
           <ChartContainer config={chartConfig} className="h-[200px] w-full">
-            <LineChart data={weeklyData}>
+            <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
               <XAxis dataKey="week" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={formatValue} tick={{ fontSize: 10 }} width={45} />

@@ -1,22 +1,8 @@
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface Transaction {
-  id: string;
-  memberName: string;
-  type: "credit" | "debit";
-  amount: number;
-  accountType: string;
-  date: string;
-}
-
-const mockTransactions: Transaction[] = [
-  { id: "1", memberName: "Sarah Nakamya", type: "credit", amount: 500000, accountType: "Savings", date: "2024-01-15" },
-  { id: "2", memberName: "John Okello", type: "debit", amount: 2000000, accountType: "Loan", date: "2024-01-15" },
-  { id: "3", memberName: "Grace Auma", type: "credit", amount: 100000, accountType: "Shares", date: "2024-01-14" },
-  { id: "4", memberName: "Peter Mugisha", type: "credit", amount: 300000, accountType: "MM", date: "2024-01-14" },
-  { id: "5", memberName: "Mary Nalwanga", type: "debit", amount: 150000, accountType: "Withdrawal", date: "2024-01-13" },
-];
+import { useRecentTransactions } from "@/hooks/useDashboardData";
+import { useNavigate } from "react-router-dom";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-UG", {
@@ -26,50 +12,88 @@ function formatCurrency(amount: number) {
   }).format(amount);
 }
 
+const accountTypeLabels: Record<string, string> = {
+  savings: "Savings",
+  shares: "Shares",
+  loan: "Loan",
+  mm: "MM Cycle",
+  fixed_deposit: "Fixed Deposit",
+  development_fund: "Development",
+};
+
 export function RecentTransactions() {
+  const { data: transactions, isLoading } = useRecentTransactions(5);
+  const navigate = useNavigate();
+
   return (
     <div className="card-elevated p-6 animate-slide-up">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-foreground">Recent Transactions</h3>
-        <button className="text-sm text-accent hover:text-accent/80 font-medium transition-colors">
+        <button 
+          onClick={() => navigate("/transactions")}
+          className="text-sm text-accent hover:text-accent/80 font-medium transition-colors"
+        >
           View all
         </button>
       </div>
       <div className="space-y-4">
-        {mockTransactions.map((txn) => (
-          <div
-            key={txn.id}
-            className="flex items-center gap-4 p-3 rounded-lg hover:bg-secondary/50 transition-colors"
-          >
+        {isLoading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 p-3">
+              <Skeleton className="w-10 h-10 rounded-full" />
+              <div className="flex-1">
+                <Skeleton className="h-4 w-32 mb-2" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+              <div className="text-right">
+                <Skeleton className="h-4 w-24 mb-2" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          ))
+        ) : transactions && transactions.length > 0 ? (
+          transactions.map((txn) => (
             <div
-              className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center",
-                txn.type === "credit" ? "bg-success/10" : "bg-warning/10"
-              )}
+              key={txn.id}
+              className="flex items-center gap-4 p-3 rounded-lg hover:bg-secondary/50 transition-colors"
             >
-              {txn.type === "credit" ? (
-                <ArrowDownLeft className="w-5 h-5 text-success" />
-              ) : (
-                <ArrowUpRight className="w-5 h-5 text-warning" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{txn.memberName}</p>
-              <p className="text-xs text-muted-foreground">{txn.accountType}</p>
-            </div>
-            <div className="text-right">
-              <p
+              <div
                 className={cn(
-                  "text-sm font-semibold",
-                  txn.type === "credit" ? "text-success" : "text-foreground"
+                  "w-10 h-10 rounded-full flex items-center justify-center",
+                  txn.direction === "credit" ? "bg-success/10" : "bg-warning/10"
                 )}
               >
-                {txn.type === "credit" ? "+" : "-"}{formatCurrency(txn.amount)}
-              </p>
-              <p className="text-xs text-muted-foreground">{txn.date}</p>
+                {txn.direction === "credit" ? (
+                  <ArrowDownLeft className="w-5 h-5 text-success" />
+                ) : (
+                  <ArrowUpRight className="w-5 h-5 text-warning" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{txn.memberName}</p>
+                <p className="text-xs text-muted-foreground">
+                  {accountTypeLabels[txn.accountType] || txn.accountType}
+                </p>
+              </div>
+              <div className="text-right">
+                <p
+                  className={cn(
+                    "text-sm font-semibold",
+                    txn.direction === "credit" ? "text-success" : "text-foreground"
+                  )}
+                >
+                  {txn.direction === "credit" ? "+" : "-"}{formatCurrency(txn.amount)}
+                </p>
+                <p className="text-xs text-muted-foreground">{txn.date}</p>
+              </div>
             </div>
+          ))
+        ) : (
+          <div className="text-center py-8 text-muted-foreground">
+            <p>No transactions yet</p>
+            <p className="text-sm">Add transactions from the Members page</p>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
