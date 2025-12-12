@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface Account {
@@ -38,6 +38,28 @@ export interface Member {
   loan_balance: number;
   status: "active" | "inactive" | "suspended";
   joined_date: string;
+}
+
+// Banking rules for balance calculation
+// Asset accounts (savings, shares, fixed_deposit, mm, development_fund): credits increase, debits decrease
+// Liability accounts (loan): debits increase (disbursement), credits decrease (repayment)
+export function calculateAccountBalance(transactions: Transaction[], accountType: string): number {
+  const isLiabilityAccount = accountType === "loan";
+  
+  return transactions.reduce((balance, txn) => {
+    if (isLiabilityAccount) {
+      // For loans: debit = disbursement (increases outstanding), credit = repayment (decreases outstanding)
+      return txn.direction === "debit" ? balance + txn.amount : balance - txn.amount;
+    } else {
+      // For asset accounts: credit = deposit (increases), debit = withdrawal (decreases)
+      return txn.direction === "credit" ? balance + txn.amount : balance - txn.amount;
+    }
+  }, 0);
+}
+
+export interface AccountWithCalculatedBalance extends Account {
+  calculatedBalance: number;
+  transactionCount: number;
 }
 
 export function useMemberDetail(memberId: string | undefined) {
@@ -82,7 +104,7 @@ export function useMemberDetail(memberId: string | undefined) {
           .select("*, account:accounts(*)")
           .eq("member_id", memberId)
           .order("txn_date", { ascending: false })
-          .limit(50);
+          .order("created_at", { ascending: false });
 
         if (txnError) throw txnError;
         setTransactions((txnData as Transaction[]) || []);
@@ -96,7 +118,54 @@ export function useMemberDetail(memberId: string | undefined) {
     fetchData();
   }, [memberId, refreshKey]);
 
-  return { member, accounts, transactions, loading, error, refetch };
+  // Calculate balances per account using banking rules
+  const accountsWithBalances = useMemo((): AccountWithCalculatedBalance[] => {
+    return accounts.map(account => {
+      const accountTransactions = transactions.filter(t => t.account_id === account.id);
+      const calculatedBalance = calculateAccountBalance(accountTransactions, account.account_type);
+      return {
+        ...account,
+        calculatedBalance,
+        transactionCount: accountTransactions.length,
+      };
+    });
+  }, [accounts, transactions]);
+
+  // Get transactions for a specific account type
+  const getTransactionsByAccountType = (accountType: string): Transaction[] => {
+    return transactions.filter(t => t.account?.account_type === accountType);
+  };
+
+  // Calculate total portfolio value (assets - liabilities)
+  const portfolioSummary = useMemo(() => {
+    const totals = {
+      totalAssets: 0,
+      totalLiabilities: 0,
+      netWorth: 0,
+    };
+
+    accountsWithBalances.forEach(account => {
+      if (account.account_type === "loan") {
+        totals.totalLiabilities += Math.abs(account.calculatedBalance);
+      } else {
+        totals.totalAssets += account.calculatedBalance;
+      }
+    });
+
+    totals.netWorth = totals.totalAssets - totals.totalLiabilities;
+    return totals;
+  }, [accountsWithBalances]);
+
+  return { 
+    member, 
+    accounts: accountsWithBalances, 
+    transactions, 
+    loading, 
+    error, 
+    refetch,
+    getTransactionsByAccountType,
+    portfolioSummary,
+  };
 }
 
 export async function createAccount(memberId: string, accountType: Account["account_type"]) {

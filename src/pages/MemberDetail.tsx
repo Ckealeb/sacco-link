@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { useMemberDetail, Account, createAccount, createTransaction } from "@/hooks/useMemberData";
+import { useMemberDetail, AccountWithCalculatedBalance, createAccount, createTransaction } from "@/hooks/useMemberData";
 import { toast } from "sonner";
 
 function formatCurrency(amount: number) {
@@ -57,7 +57,8 @@ const accountTypeConfig: Record<string, { title: string; icon: React.ElementType
 export default function MemberDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { member, accounts, transactions, loading, error, refetch } = useMemberDetail(id);
+  const { member, accounts, transactions, loading, error, refetch, getTransactionsByAccountType, portfolioSummary } = useMemberDetail(id);
+  const [activeAccountTab, setActiveAccountTab] = useState<string>("all");
 
   // Statement dialog state
   const [statementOpen, setStatementOpen] = useState(false);
@@ -84,8 +85,10 @@ export default function MemberDetail() {
       let account = accounts.find(a => a.account_type === txnAccountType);
       
       if (!account) {
-        account = await createAccount(id, txnAccountType as Account["account_type"]);
+        const newAccount = await createAccount(id, txnAccountType as AccountWithCalculatedBalance["account_type"]);
         toast.success(`${accountTypeConfig[txnAccountType]?.title} account created`);
+        // Use the new account with default calculated values
+        account = { ...newAccount, calculatedBalance: 0, transactionCount: 0 } as AccountWithCalculatedBalance;
       }
 
       await createTransaction(
@@ -94,7 +97,7 @@ export default function MemberDetail() {
         parseFloat(txnAmount),
         txnDirection,
         txnNarration || `${txnDirection === "credit" ? "Deposit" : "Withdrawal"} - ${accountTypeConfig[txnAccountType]?.title}`,
-        account.balance
+        account.calculatedBalance
       );
 
       toast.success("Transaction recorded successfully");
@@ -170,8 +173,13 @@ export default function MemberDetail() {
     );
   }
 
-  const getAccountByType = (type: string): Account | undefined => {
+  const getAccountByType = (type: string): AccountWithCalculatedBalance | undefined => {
     return accounts.find(a => a.account_type === type);
+  };
+
+  const getDisplayedTransactions = () => {
+    if (activeAccountTab === "all") return transactions;
+    return getTransactionsByAccountType(activeAccountTab);
   };
 
   return (
@@ -353,19 +361,62 @@ export default function MemberDetail() {
         </div>
       </div>
 
+      {/* Portfolio Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-success/10 border border-success/20 rounded-lg p-4">
+          <p className="text-sm text-muted-foreground">Total Assets</p>
+          <p className="text-xl font-semibold text-success">{formatCurrency(portfolioSummary.totalAssets)}</p>
+        </div>
+        <div className="bg-warning/10 border border-warning/20 rounded-lg p-4">
+          <p className="text-sm text-muted-foreground">Total Liabilities</p>
+          <p className="text-xl font-semibold text-warning">{formatCurrency(portfolioSummary.totalLiabilities)}</p>
+        </div>
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
+          <p className="text-sm text-muted-foreground">Net Worth</p>
+          <p className={cn("text-xl font-semibold", portfolioSummary.netWorth >= 0 ? "text-primary" : "text-destructive")}>
+            {formatCurrency(portfolioSummary.netWorth)}
+          </p>
+        </div>
+      </div>
+
       {/* Account Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
         {Object.entries(accountTypeConfig).map(([type, config]) => {
           const account = getAccountByType(type);
+          const balance = account?.calculatedBalance ?? 0;
+          const isLoan = type === "loan";
           return (
-            <AccountCard
+            <div
               key={type}
-              title={config.title}
-              balance={account?.balance ?? 0}
-              accountNo={account?.account_no ?? "Not opened"}
-              icon={config.icon}
-              iconColor={config.iconColor}
-            />
+              onClick={() => setActiveAccountTab(type)}
+              className={cn(
+                "stat-card cursor-pointer transition-all hover:ring-2 hover:ring-primary/50",
+                activeAccountTab === type && "ring-2 ring-primary"
+              )}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{config.title}</p>
+                  <p className={cn(
+                    "mt-2 text-lg font-semibold",
+                    isLoan && balance > 0 ? "text-warning" : "text-foreground"
+                  )}>
+                    {isLoan && balance > 0 ? "-" : ""}{formatCurrency(Math.abs(balance))}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 font-mono">
+                    {account?.account_no ?? "Not opened"}
+                  </p>
+                  {account && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {account.transactionCount} txns
+                    </p>
+                  )}
+                </div>
+                <div className={cn("p-2 rounded-xl", config.iconColor)}>
+                  <config.icon className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
           );
         })}
       </div>
@@ -380,16 +431,45 @@ export default function MemberDetail() {
 
         <TabsContent value="transactions">
           <div className="card-elevated">
-            <div className="p-4 border-b border-border">
-              <h3 className="font-semibold text-foreground">Transaction History</h3>
+            <div className="p-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
+              <h3 className="font-semibold text-foreground">
+                Transaction History
+                {activeAccountTab !== "all" && (
+                  <span className="text-muted-foreground font-normal ml-2">
+                    - {accountTypeConfig[activeAccountTab]?.title}
+                  </span>
+                )}
+              </h3>
+              <div className="flex gap-2">
+                <Button
+                  variant={activeAccountTab === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setActiveAccountTab("all")}
+                >
+                  All
+                </Button>
+                {accounts.map(acc => (
+                  <Button
+                    key={acc.id}
+                    variant={activeAccountTab === acc.account_type ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setActiveAccountTab(acc.account_type)}
+                  >
+                    {accountTypeConfig[acc.account_type]?.title}
+                  </Button>
+                ))}
+              </div>
             </div>
-            {transactions.length === 0 ? (
+            {getDisplayedTransactions().length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-muted-foreground">No transactions yet</p>
+                <Button className="mt-4" onClick={() => setTxnOpen(true)}>
+                  Add First Transaction
+                </Button>
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {transactions.map((txn) => (
+                {getDisplayedTransactions().map((txn) => (
                   <div key={txn.id} className="flex items-center gap-4 p-4 hover:bg-secondary/30 transition-colors">
                     <div
                       className={cn(
@@ -406,7 +486,7 @@ export default function MemberDetail() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{txn.narration || "Transaction"}</p>
                       <p className="text-xs text-muted-foreground">
-                        {txn.account ? accountTypeConfig[txn.account.account_type]?.title : "Account"}
+                        {txn.account ? accountTypeConfig[txn.account.account_type]?.title : "Account"} • {txn.account?.account_no}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
@@ -419,6 +499,7 @@ export default function MemberDetail() {
                         {txn.direction === "credit" ? "+" : "-"}{formatCurrency(txn.amount)}
                       </p>
                       <p className="text-xs text-muted-foreground">{txn.txn_date}</p>
+                      <p className="text-xs text-muted-foreground/70">Bal: {formatCurrency(txn.balance_after)}</p>
                     </div>
                   </div>
                 ))}
@@ -428,21 +509,103 @@ export default function MemberDetail() {
         </TabsContent>
 
         <TabsContent value="loans">
-          <div className="card-elevated p-8 text-center">
-            <Wallet className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="font-semibold text-foreground mb-2">No Active Loans</h3>
-            <p className="text-sm text-muted-foreground mb-4">This member doesn't have any active loans.</p>
-            <Button>Apply for Loan</Button>
-          </div>
+          {(() => {
+            const loanAccount = getAccountByType("loan");
+            const loanTransactions = getTransactionsByAccountType("loan");
+            if (!loanAccount || loanTransactions.length === 0) {
+              return (
+                <div className="card-elevated p-8 text-center">
+                  <Wallet className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="font-semibold text-foreground mb-2">No Active Loans</h3>
+                  <p className="text-sm text-muted-foreground mb-4">This member doesn't have any active loans.</p>
+                  <Button onClick={() => { setTxnAccountType("loan"); setTxnOpen(true); }}>Apply for Loan</Button>
+                </div>
+              );
+            }
+            return (
+              <div className="card-elevated">
+                <div className="p-4 border-b border-border flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold text-foreground">Loan Account</h3>
+                    <p className="text-sm text-muted-foreground font-mono">{loanAccount.account_no}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Outstanding Balance</p>
+                    <p className="text-xl font-semibold text-warning">{formatCurrency(Math.abs(loanAccount.calculatedBalance))}</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-border">
+                  {loanTransactions.map((txn) => (
+                    <div key={txn.id} className="flex items-center gap-4 p-4 hover:bg-secondary/30 transition-colors">
+                      <div className={cn("w-10 h-10 rounded-full flex items-center justify-center shrink-0", txn.direction === "debit" ? "bg-warning/10" : "bg-success/10")}>
+                        {txn.direction === "debit" ? <ArrowUpRight className="w-5 h-5 text-warning" /> : <ArrowDownLeft className="w-5 h-5 text-success" />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{txn.direction === "debit" ? "Loan Disbursement" : "Loan Repayment"}</p>
+                        <p className="text-xs text-muted-foreground">{txn.narration || "-"}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={cn("text-sm font-semibold", txn.direction === "credit" ? "text-success" : "text-warning")}>
+                          {txn.direction === "debit" ? "+" : "-"}{formatCurrency(txn.amount)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{txn.txn_date}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </TabsContent>
 
         <TabsContent value="mm">
-          <div className="card-elevated p-8 text-center">
-            <CircleDollarSign className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="font-semibold text-foreground mb-2">MM Cycle Participation</h3>
-            <p className="text-sm text-muted-foreground mb-4">View and manage MM cycle contributions.</p>
-            <Button variant="outline">View MM History</Button>
-          </div>
+          {(() => {
+            const mmAccount = getAccountByType("mm");
+            const mmTransactions = getTransactionsByAccountType("mm");
+            if (!mmAccount || mmTransactions.length === 0) {
+              return (
+                <div className="card-elevated p-8 text-center">
+                  <CircleDollarSign className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="font-semibold text-foreground mb-2">MM Cycle Participation</h3>
+                  <p className="text-sm text-muted-foreground mb-4">No MM cycle transactions yet.</p>
+                  <Button variant="outline" onClick={() => { setTxnAccountType("mm"); setTxnOpen(true); }}>Add MM Transaction</Button>
+                </div>
+              );
+            }
+            return (
+              <div className="card-elevated">
+                <div className="p-4 border-b border-border flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold text-foreground">MM Account</h3>
+                    <p className="text-sm text-muted-foreground font-mono">{mmAccount.account_no}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Balance</p>
+                    <p className="text-xl font-semibold text-info">{formatCurrency(mmAccount.calculatedBalance)}</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-border">
+                  {mmTransactions.map((txn) => (
+                    <div key={txn.id} className="flex items-center gap-4 p-4 hover:bg-secondary/30 transition-colors">
+                      <div className={cn("w-10 h-10 rounded-full flex items-center justify-center shrink-0", txn.direction === "credit" ? "bg-success/10" : "bg-info/10")}>
+                        {txn.direction === "credit" ? <ArrowDownLeft className="w-5 h-5 text-success" /> : <ArrowUpRight className="w-5 h-5 text-info" />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{txn.direction === "credit" ? "MM Contribution" : "MM Payout"}</p>
+                        <p className="text-xs text-muted-foreground">{txn.narration || "-"}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={cn("text-sm font-semibold", txn.direction === "credit" ? "text-success" : "text-info")}>
+                          {txn.direction === "credit" ? "+" : "-"}{formatCurrency(txn.amount)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{txn.txn_date}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </TabsContent>
       </Tabs>
     </div>
