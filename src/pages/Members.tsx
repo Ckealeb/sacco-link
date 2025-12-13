@@ -90,6 +90,7 @@ export default function Members() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [initialShares, setInitialShares] = useState("");
+  const [editStatus, setEditStatus] = useState("");
 
   const fetchMembers = async () => {
     try {
@@ -141,6 +142,7 @@ export default function Members() {
     setPhone("");
     setEmail("");
     setInitialShares("");
+    setEditStatus("");
   };
 
   const handleAddMember = async () => {
@@ -200,14 +202,20 @@ export default function Members() {
 
     setSubmitting(true);
     try {
+      const updateData: Record<string, any> = {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        phone: phone.trim(),
+        email: email.trim() || null,
+      };
+      
+      if (editStatus) {
+        updateData.status = editStatus;
+      }
+
       const { error } = await supabase
         .from("members")
-        .update({
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          phone: phone.trim(),
-          email: email.trim() || null,
-        })
+        .update(updateData)
         .eq("id", editingMember.id);
 
       if (error) throw error;
@@ -232,6 +240,7 @@ export default function Members() {
     setLastName(rest.join(" "));
     setPhone(member.phone);
     setEmail(member.email);
+    setEditStatus(member.status);
     setIsEditDialogOpen(true);
   };
 
@@ -540,35 +549,38 @@ export default function Members() {
         if (!open) {
           setEditingMember(null);
           resetForm();
+          setEditStatus("");
         }
       }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Member</DialogTitle>
             <DialogDescription>
-              Update member details below.
+              Update member details for {editingMember?.memberNo}.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="editFirstName">First Name *</Label>
-              <Input 
-                id="editFirstName" 
-                placeholder="Enter first name" 
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                disabled={submitting}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="editLastName">Last Name *</Label>
-              <Input 
-                id="editLastName" 
-                placeholder="Enter last name" 
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                disabled={submitting}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="editFirstName">First Name *</Label>
+                <Input 
+                  id="editFirstName" 
+                  placeholder="Enter first name" 
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="editLastName">Last Name *</Label>
+                <Input 
+                  id="editLastName" 
+                  placeholder="Enter last name" 
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="editPhone">Phone Number *</Label>
@@ -590,6 +602,19 @@ export default function Members() {
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={submitting}
               />
+            </div>
+            <div className="grid gap-2">
+              <Label>Status</Label>
+              <Select value={editStatus} onValueChange={setEditStatus} disabled={submitting}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="flex justify-end gap-2">
