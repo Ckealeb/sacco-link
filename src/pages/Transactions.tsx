@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Search, Plus, Filter, Download, ArrowDownLeft, ArrowUpRight, FileSpreadsheet, FileText } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Search, Plus, Filter, Download, ArrowDownLeft, ArrowUpRight, FileSpreadsheet, FileText, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +69,7 @@ const accountTypeLabels: Record<string, string> = {
 };
 
 export default function Transactions() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
   const [directionFilter, setDirectionFilter] = useState("all");
@@ -102,15 +104,18 @@ export default function Transactions() {
     }
 
     if (format === "excel") {
-      const headers = ["Date", "Reference", "Member", "Account", "Type", "Amount", "Narration"];
+      const headers = ["Date", "Member No", "Member Name", "Phone", "Account Type", "Account No", "Type", "Amount", "Balance After", "Narration"];
       const rows = transactions.map(t => [
         t.date,
-        t.reference || "",
-        `${t.memberName} (${t.memberNo})`,
+        t.memberNo,
+        t.memberName,
+        t.memberPhone,
         accountTypeLabels[t.accountType] || t.accountType,
+        t.accountNo,
         t.direction,
         t.amount,
-        t.narration || "",
+        t.balanceAfter,
+        `"${t.narration || ""}"`,
       ]);
 
       const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
@@ -168,21 +173,24 @@ export default function Transactions() {
       ),
     },
     {
-      header: "Reference",
-      accessorKey: "reference" as const,
-      cell: (txn: TransactionWithDetails) => (
-        <span className="text-sm font-mono text-muted-foreground">
-          {txn.reference || "-"}
-        </span>
-      ),
-    },
-    {
       header: "Member",
       accessorKey: "memberName" as const,
       cell: (txn: TransactionWithDetails) => (
-        <div>
-          <p className="text-sm font-medium text-foreground">{txn.memberName}</p>
+        <div 
+          className="cursor-pointer group"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/members/${txn.memberId}`);
+          }}
+        >
+          <div className="flex items-center gap-1">
+            <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+              {txn.memberName}
+            </p>
+            <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 text-primary transition-opacity" />
+          </div>
           <p className="text-xs text-muted-foreground font-mono">{txn.memberNo}</p>
+          <p className="text-xs text-muted-foreground">{txn.memberPhone}</p>
         </div>
       ),
     },
@@ -190,9 +198,14 @@ export default function Transactions() {
       header: "Account",
       accessorKey: "accountType" as const,
       cell: (txn: TransactionWithDetails) => (
-        <span className={cn("px-2.5 py-1 rounded-full text-xs font-medium", accountTypeStyles[txn.accountType] || "bg-secondary text-secondary-foreground")}>
-          {accountTypeLabels[txn.accountType] || txn.accountType}
-        </span>
+        <div>
+          <span className={cn("px-2.5 py-1 rounded-full text-xs font-medium", accountTypeStyles[txn.accountType] || "bg-secondary text-secondary-foreground")}>
+            {accountTypeLabels[txn.accountType] || txn.accountType}
+          </span>
+          {txn.accountNo && (
+            <p className="text-xs text-muted-foreground font-mono mt-1">{txn.accountNo}</p>
+          )}
+        </div>
       ),
     },
     {
@@ -222,13 +235,21 @@ export default function Transactions() {
           {formatCurrency(txn.amount)}
         </span>
       ),
-      className: "text-right",
+    },
+    {
+      header: "Balance",
+      accessorKey: "balanceAfter" as const,
+      cell: (txn: TransactionWithDetails) => (
+        <span className="text-sm font-medium text-foreground">
+          {formatCurrency(txn.balanceAfter)}
+        </span>
+      ),
     },
     {
       header: "Narration",
       accessorKey: "narration" as const,
       cell: (txn: TransactionWithDetails) => (
-        <span className="text-sm text-muted-foreground truncate max-w-[200px] block">
+        <span className="text-sm text-muted-foreground truncate max-w-[150px] block">
           {txn.narration || "-"}
         </span>
       ),
