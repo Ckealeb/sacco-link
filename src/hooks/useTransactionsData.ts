@@ -8,9 +8,13 @@ type TransactionDirection = Database["public"]["Enums"]["transaction_direction"]
 export interface TransactionWithDetails {
   id: string;
   date: string;
+  memberId: string;
   memberName: string;
   memberNo: string;
+  memberPhone: string;
+  memberStatus: string;
   accountType: string;
+  accountNo: string;
   direction: TransactionDirection;
   amount: number;
   narration: string | null;
@@ -78,12 +82,12 @@ export function useTransactions(filters: TransactionFilters = {}) {
 
       const { data: members } = await supabase
         .from("members")
-        .select("id, first_name, last_name, member_no")
+        .select("id, first_name, last_name, member_no, phone, status")
         .in("id", memberIds);
 
       const { data: accounts } = await supabase
         .from("accounts")
-        .select("id, account_type")
+        .select("id, account_type, account_no")
         .in("id", accountIds);
 
       const memberMap = new Map(members?.map(m => [m.id, m]) || []);
@@ -96,9 +100,13 @@ export function useTransactions(filters: TransactionFilters = {}) {
         return {
           id: txn.id,
           date: txn.txn_date,
+          memberId: txn.member_id,
           memberName: member ? `${member.first_name} ${member.last_name}` : "Unknown",
           memberNo: member?.member_no || "",
+          memberPhone: member?.phone || "",
+          memberStatus: member?.status || "unknown",
           accountType: account?.account_type || "unknown",
+          accountNo: account?.account_no || "",
           direction: txn.direction,
           amount: Number(txn.amount),
           narration: txn.narration,
